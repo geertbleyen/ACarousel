@@ -20,6 +20,16 @@
 
 import SwiftUI
 
+private extension View {
+    @ViewBuilder
+    func ifCondition<TrueContent: View>(_ condition: Bool, then trueContent: (Self) -> TrueContent) -> some View {
+        if condition {
+            trueContent(self)
+        } else {
+            self
+        }
+    }
+}
 
 @available(iOS 13.0, OSX 10.15, *)
 public struct ACarousel<Data, ID, Content> : View where Data : RandomAccessCollection, ID : Hashable, Content : View {
@@ -48,6 +58,12 @@ public struct ACarousel<Data, ID, Content> : View where Data : RandomAccessColle
                             viewModel.selectItem(data)
                         }
                     }
+                    .ifCondition(viewModel.equalSpacing && viewModel.itemIsLeftOfSelected(data)) { view in
+                      view.padding(.trailing, viewModel.paddingNextToSelected)
+                    }
+                    .ifCondition(viewModel.equalSpacing && viewModel.itemIsRightOfSelected(data)) { view in
+                      view.padding(.leading, viewModel.paddingNextToSelected)
+                    }
               case .nonUniform(let horizontal, let vertical):
                 content(data)
                     .frame(width: viewModel.itemWidth)
@@ -57,8 +73,13 @@ public struct ACarousel<Data, ID, Content> : View where Data : RandomAccessColle
                             viewModel.selectItem(data)
                         }
                     }
-                
-              }
+                    .ifCondition(viewModel.equalSpacing && viewModel.itemIsLeftOfSelected(data)) { view in
+                      view.padding(.trailing, viewModel.paddingNextToSelected)
+                    }
+                    .ifCondition(viewModel.equalSpacing && viewModel.itemIsRightOfSelected(data)) { view in
+                      view.padding(.leading, viewModel.paddingNextToSelected)
+                    }
+                }
             }
         }
         .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
@@ -92,9 +113,13 @@ extension ACarousel {
     ///   - autoScroll: A enum that define view to scroll automatically. See
     ///     ``ACarouselAutoScroll``. default is `inactive`.
     ///   - content: The view builder that creates views dynamically.
-    public init(_ data: Data, id: KeyPath<Data.Element, ID>, index: Binding<Int> = .constant(0), spacing: CGFloat = 10, headspace: CGFloat = 10, sidesScaling: ScaleMode = .uniform(factor: 0.8), isWrap: Bool = false, autoScroll: ACarouselAutoScroll = .inactive, canMove: Bool = true, tapToSelect: Bool = false, @ViewBuilder content: @escaping (Data.Element) -> Content) {
+    ///   - equalSpacing: make space around selected item as wide as around
+    ///      other items.
+    ///   - tapToSelect: Allows tapping on other visible items in the carousel to
+    ///      select them.
+    public init(_ data: Data, id: KeyPath<Data.Element, ID>, index: Binding<Int> = .constant(0), spacing: CGFloat = 10, headspace: CGFloat = 10, sidesScaling: ScaleMode = .uniform(factor: 0.8), isWrap: Bool = false, autoScroll: ACarouselAutoScroll = .inactive, canMove: Bool = true, equalSpacing: Bool = false, tapToSelect: Bool = false, @ViewBuilder content: @escaping (Data.Element) -> Content) {
         
-        self.viewModel = ACarouselViewModel(data, id: id, index: index, spacing: spacing, headspace: headspace, sidesScaling: sidesScaling, isWrap: isWrap, autoScroll: autoScroll, canMove: canMove, tapToSelect: tapToSelect)
+        self.viewModel = ACarouselViewModel(data, id: id, index: index, spacing: spacing, headspace: headspace, sidesScaling: sidesScaling, isWrap: isWrap, autoScroll: autoScroll, canMove: canMove, equalSpacing: equalSpacing, tapToSelect: tapToSelect)
         self.content = content
     }
     
@@ -117,12 +142,14 @@ extension ACarousel where ID == Data.Element.ID, Data.Element : Identifiable {
     ///   - isWrap: Define views to scroll through in a loop, default is false.
     ///   - autoScroll: A enum that define view to scroll automatically. See
     ///     ``ACarouselAutoScroll``. default is `inactive`.
+    ///   - equalSpacing: make space around selected item as wide as around
+    ///      other items.
     ///   - tapToSelect: Allows tapping on other visible items in the carousel to
-    ///      select them
+    ///      select them.
     ///   - content: The view builder that creates views dynamically.
-    public init(_ data: Data, index: Binding<Int> = .constant(0), spacing: CGFloat = 10, headspace: CGFloat = 10, sidesScaling: ScaleMode = .uniform(factor:0.8), isWrap: Bool = false, autoScroll: ACarouselAutoScroll = .inactive, canMove: Bool = true, tapToSelect: Bool = false, @ViewBuilder content: @escaping (Data.Element) -> Content) {
+    public init(_ data: Data, index: Binding<Int> = .constant(0), spacing: CGFloat = 10, headspace: CGFloat = 10, sidesScaling: ScaleMode = .uniform(factor:0.8), isWrap: Bool = false, autoScroll: ACarouselAutoScroll = .inactive, canMove: Bool = true, equalSpacing: Bool = false, tapToSelect: Bool = false, @ViewBuilder content: @escaping (Data.Element) -> Content) {
         
-        self.viewModel = ACarouselViewModel(data, index: index, spacing: spacing, headspace: headspace, sidesScaling: sidesScaling, isWrap: isWrap, autoScroll: autoScroll, canMove: canMove, tapToSelect: tapToSelect)
+        self.viewModel = ACarouselViewModel(data, index: index, spacing: spacing, headspace: headspace, sidesScaling: sidesScaling, isWrap: isWrap, autoScroll: autoScroll, canMove: canMove, equalSpacing: equalSpacing, tapToSelect: tapToSelect)
         self.content = content
     }
     

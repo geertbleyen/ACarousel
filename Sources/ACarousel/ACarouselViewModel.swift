@@ -37,13 +37,14 @@ class ACarouselViewModel<Data, ID>: ObservableObject where Data : RandomAccessCo
     private let _dataId: KeyPath<Data.Element, ID>
     private let _spacing: CGFloat
     private let _headspace: CGFloat
-    private let _isWrap: Bool
+    private let _isWrap: Bool  // TODO: when this is set to true, spacing is messed up
     private let _sidesScaling: ScaleMode
     private let _autoScroll: ACarouselAutoScroll
     private let _canMove: Bool
+    @Published var equalSpacing: Bool
     @Published var tapToSelect: Bool
     
-    init(_ data: Data, id: KeyPath<Data.Element, ID>, index: Binding<Int>, spacing: CGFloat, headspace: CGFloat, sidesScaling: ScaleMode, isWrap: Bool, autoScroll: ACarouselAutoScroll, canMove: Bool, tapToSelect: Bool) {
+    init(_ data: Data, id: KeyPath<Data.Element, ID>, index: Binding<Int>, spacing: CGFloat, headspace: CGFloat, sidesScaling: ScaleMode, isWrap: Bool, autoScroll: ACarouselAutoScroll, canMove: Bool, equalSpacing: Bool, tapToSelect: Bool) {
         
         guard index.wrappedValue < data.count else {
             fatalError("The index should be less than the count of data ")
@@ -57,6 +58,7 @@ class ACarouselViewModel<Data, ID>: ObservableObject where Data : RandomAccessCo
         self._sidesScaling = sidesScaling
         self._autoScroll = autoScroll
         self._canMove = canMove
+        self.equalSpacing = equalSpacing
         self.tapToSelect = tapToSelect
         
         if data.count > 1 && isWrap {
@@ -112,8 +114,8 @@ class ACarouselViewModel<Data, ID>: ObservableObject where Data : RandomAccessCo
 
 extension ACarouselViewModel where ID == Data.Element.ID, Data.Element : Identifiable {
     
-    convenience init(_ data: Data, index: Binding<Int>, spacing: CGFloat, headspace: CGFloat, sidesScaling: ScaleMode, isWrap: Bool, autoScroll: ACarouselAutoScroll, canMove: Bool, tapToSelect: Bool) {
-        self.init(data, id: \.id, index: index, spacing: spacing, headspace: headspace, sidesScaling: sidesScaling, isWrap: isWrap, autoScroll: autoScroll, canMove: canMove, tapToSelect: tapToSelect)
+    convenience init(_ data: Data, index: Binding<Int>, spacing: CGFloat, headspace: CGFloat, sidesScaling: ScaleMode, isWrap: Bool, autoScroll: ACarouselAutoScroll, canMove: Bool, equalSpacing: Bool, tapToSelect: Bool) {
+        self.init(data, id: \.id, index: index, spacing: spacing, headspace: headspace, sidesScaling: sidesScaling, isWrap: isWrap, autoScroll: autoScroll, canMove: canMove, equalSpacing: equalSpacing, tapToSelect: tapToSelect)
     }
 }
 
@@ -121,13 +123,7 @@ extension ACarouselViewModel where ID == Data.Element.ID, Data.Element : Identif
 extension ACarouselViewModel {
     
     var data: Data {
-        guard _data.count != 0 else {
-            return _data
-        }
-        guard _data.count > 1 else {
-            return _data
-        }
-        guard isWrap else {
+        guard isWrap && _data.count > 1 else {
             return _data
         }
         return [_data.last!] + _data + [_data.first!] as! Data
@@ -150,6 +146,15 @@ extension ACarouselViewModel {
     
     var itemWidth: CGFloat {
         max(0, viewSize.width - defaultPadding * 2)
+    }
+  
+    var paddingNextToSelected: CGFloat {
+        switch _sidesScaling {
+            case .nonUniform(let horizontal, _):
+            return itemWidth * (1 - horizontal / 2.0)
+            case .uniform(let factor):
+            return itemWidth * (1 - factor / 2.0)
+        }
     }
     
     var timer: TimePublisher? {
@@ -188,6 +193,28 @@ extension ACarouselViewModel {
                 }
             }
         }
+    }
+    
+    /// returns true when the item is positioned next to the selected one on the left
+    func itemIsLeftOfSelected(_ item: Data.Element) -> Bool {
+        guard activeIndex < data.count && activeIndex >= 0 else {
+            return false
+        }
+        if let index = data.firstIndex(where: { $0[keyPath: _dataId] == item[keyPath: _dataId] }) {
+            return data.distance(from: activeIndex as! Data.Index, to: index) == -1
+        }
+        return false
+    }
+    
+    /// returns true when the item is positioned next to the selected one on the right
+    func itemIsRightOfSelected(_ item: Data.Element) -> Bool {
+        guard activeIndex < data.count && activeIndex >= 0 else {
+            return false
+        }
+        if let index = data.firstIndex(where: { $0[keyPath: _dataId] == item[keyPath: _dataId] }) {
+            return data.distance(from: activeIndex as! Data.Index, to: index) == 1
+        }
+        return false
     }
 }
 
@@ -230,10 +257,15 @@ extension ACarouselViewModel {
 
 // MARK: - Offset Method
 extension ACarouselViewModel {
+    var offsetCorrection: CGFloat {
+        // only correct offset if there is an item to the left
+        paddingNextToSelected * CGFloat(activeIndex > 0 ? 1 : 0)
+    }
+
     /// current offset value
     var offset: CGFloat {
         let activeOffset = CGFloat(activeIndex) * itemActualWidth
-        return defaultPadding - activeOffset + dragOffset
+        return defaultPadding - activeOffset + dragOffset - (equalSpacing ? offsetCorrection : 0)
     }
     
     /// change offset when acitveItem changes
@@ -244,14 +276,14 @@ extension ACarouselViewModel {
         }
         
         let minimumOffset = defaultPadding
-        let maxinumOffset = defaultPadding - CGFloat(data.count - 1) * itemActualWidth
+        var maximumOffset = defaultPadding - CGFloat(data.count - 1) * itemActualWidth - (equalSpacing ? offsetCorrection : 0)
         
         if offset == minimumOffset {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.activeIndex = self.data.count - 2
                 self.isAnimatedOffset = false
             }
-        } else if offset == maxinumOffset {
+        } else if offset == maximumOffset {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.activeIndex = 1
                 self.isAnimatedOffset = false
